@@ -6,6 +6,7 @@ use core::{
     task::{Context, Poll, Waker},
 };
 
+use axbacktrace::Backtrace;
 use axerrno::{AxError, AxResult};
 use axpoll::{IoEvents, PollSet, Pollable};
 use axtask::future::{block_on, poll_io};
@@ -16,8 +17,8 @@ use ringbuf::{
     CachingCons, CachingProd,
     traits::{Consumer, Observer, Producer, Split},
 };
-use starry_core::task::send_signal_to_process_group;
-use starry_signal::SignalInfo;
+use starry_core::task::{send_signal_to_process_group, tasks, AsThread};
+use starry_signal::{SignalInfo, Signo};
 
 use crate::terminal::{Terminal, termios::Termios2};
 
@@ -161,6 +162,9 @@ impl<R: TtyRead, W: TtyWrite> InputReader<R, W> {
         if let Some(signo) = term.signo_for(ch)
             && let Some(pg) = self.terminal.job_control.foreground()
         {
+            if signo == Signo::SIGQUIT {
+                debug_dump();
+            }
             let sig = SignalInfo::new_kernel(signo);
             if let Err(err) = send_signal_to_process_group(pg.pgid(), Some(sig)) {
                 warn!("Failed to send signal: {err:?}");
@@ -199,6 +203,24 @@ impl<R: TtyRead> SimpleReader<R> {
             let _ = self.buf_tx.try_push(*ch);
         }
     }
+}
+
+fn debug_dump() {
+    ax_println!("====== Ctrl+\\ debug dump ======");
+    let bt = Backtrace::capture();
+    ax_println!("Current backtrace:\n{bt}");
+    for task in tasks() {
+        let thread = task.as_thread();
+        let proc = &thread.proc_data.proc;
+        ax_println!(
+            "{} state={:?} pid={} pgid={}",
+            task.id_name(),
+            task.state(),
+            proc.pid(),
+            proc.group().pgid()
+        );
+    }
+    ax_println!("====== End debug dump ======");
 }
 
 enum Processor<R, W> {

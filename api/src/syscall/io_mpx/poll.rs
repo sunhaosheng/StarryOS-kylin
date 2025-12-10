@@ -16,10 +16,31 @@ use crate::{
     time::TimeValueLike,
 };
 
+fn poll_once(fds: &FdPollSet, revents: &mut [&mut i16]) -> usize {
+    let mut ready = 0usize;
+    for ((fd, events), revents) in fds.0.iter().zip(revents.iter_mut()) {
+        let mut result = fd.poll();
+        if result.contains(IoEvents::IN) {
+            result |= IoEvents::RDNORM;
+        }
+        if result.contains(IoEvents::OUT) {
+            result |= IoEvents::WRNORM;
+        }
+        result &= *events;
+
+        **revents = result.bits() as _;
+        if **revents != 0 {
+            ready += 1;
+        }
+    }
+    ready
+}
+
 fn do_poll(
     poll_fds: &mut [pollfd],
     timeout: Option<TimeValue>,
     sigmask: Option<SignalSet>,
+    zero_timeout: bool,
 ) -> AxResult<isize> {
     debug!("do_poll fds={poll_fds:?} timeout={timeout:?}");
 
@@ -51,27 +72,16 @@ fn do_poll(
         return Ok(res);
     }
     let fds = FdPollSet(fds);
+    let ready = poll_once(&fds, revents.as_mut_slice());
+    if ready > 0 || zero_timeout {
+        return Ok(ready as _);
+    }
 
     with_replacen_blocked(sigmask, || {
         match block_on(future::timeout(
             timeout,
             poll_io(&fds, IoEvents::empty(), false, || {
-                let mut res = 0usize;
-                for ((fd, events), revents) in fds.0.iter().zip(revents.iter_mut()) {
-                    let mut result = fd.poll();
-                    if result.contains(IoEvents::IN) {
-                        result |= IoEvents::RDNORM;
-                    }
-                    if result.contains(IoEvents::OUT) {
-                        result |= IoEvents::WRNORM;
-                    }
-                    result &= *events;
-
-                    **revents = result.bits() as _;
-                    if **revents != 0 {
-                        res += 1;
-                    }
-                }
+                let res = poll_once(&fds, revents.as_mut_slice());
                 if res > 0 {
                     Ok(res as _)
                 } else {
@@ -88,12 +98,13 @@ fn do_poll(
 #[cfg(target_arch = "x86_64")]
 pub fn sys_poll(fds: UserPtr<pollfd>, nfds: u32, timeout: i32) -> AxResult<isize> {
     let fds = fds.get_as_mut_slice(nfds as usize)?;
+    let zero_timeout = timeout == 0;
     let timeout = if timeout < 0 {
         None
     } else {
         Some(TimeValue::from_millis(timeout as u64))
     };
-    do_poll(fds, timeout, None)
+    do_poll(fds, timeout, None, zero_timeout)
 }
 
 pub fn sys_ppoll(
@@ -105,9 +116,16 @@ pub fn sys_ppoll(
 ) -> AxResult<isize> {
     check_sigset_size(sigsetsize)?;
     let fds = fds.get_as_mut_slice(nfds.try_into().map_err(|_| AxError::InvalidInput)?)?;
-    let timeout = nullable!(timeout.get_as_ref())?
+    let timeout_ts = nullable!(timeout.get_as_ref())?;
+    let zero_timeout = matches!(timeout_ts, Some(ts) if ts.tv_sec == 0 && ts.tv_nsec == 0);
+    let timeout = timeout_ts
         .map(|ts| ts.try_into_time_value())
         .transpose()?;
     // TODO: handle signal
-    do_poll(fds, timeout, nullable!(sigmask.get_as_ref())?.copied())
+    do_poll(
+        fds,
+        timeout,
+        nullable!(sigmask.get_as_ref())?.copied(),
+        zero_timeout,
+    )
 }
