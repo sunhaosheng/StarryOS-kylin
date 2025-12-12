@@ -511,6 +511,7 @@ dependencies = [
  "axfs",
  "axfs-ng-vfs",
  "axhal",
+ "axlog",
  "axsync",
  "axtask",
  "enum_dispatch",
