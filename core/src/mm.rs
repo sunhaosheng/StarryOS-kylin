@@ -7,7 +7,6 @@ use core::{
     hint::{likely, unlikely},
     iter,
     mem::MaybeUninit,
-    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use axerrno::{AxError, AxResult};
@@ -29,8 +28,10 @@ use ouroboros::self_referencing;
 use starry_vm::{VmError, VmIo, VmResult};
 use uluru::LRUCache;
 
-use crate::config::{USER_SPACE_BASE, USER_SPACE_SIZE};
-use crate::task::AsThread;
+use crate::{
+    config::{USER_SPACE_BASE, USER_SPACE_SIZE},
+    task::AsThread,
+};
 
 /// Creates a new empty user address space.
 pub fn new_user_aspace_empty() -> AxResult<AddrSpace> {
@@ -353,20 +354,18 @@ pub fn load_user_app(
     Ok((entry, user_sp))
 }
 
-static ACCESSING_USER_MEM: AtomicUsize = AtomicUsize::new(0);
-
 /// Enables scoped access into user memory, allowing page faults to occur inside
 /// kernel.
 pub fn access_user_memory<R>(f: impl FnOnce() -> R) -> R {
-    ACCESSING_USER_MEM.fetch_add(1, Ordering::Release);
-    let result = f();
-    ACCESSING_USER_MEM.fetch_sub(1, Ordering::Release);
-    result
-}
+    let curr = current();
+    let Some(thr) = curr.try_as_thread() else {
+        panic!("access_user_memory called outside of thread context");
+    };
 
-/// Check if the current thread is accessing user memory.
-pub fn is_accessing_user_memory() -> bool {
-    ACCESSING_USER_MEM.load(Ordering::Acquire) > 0
+    thr.set_accessing_user_memory(true);
+    let result = f();
+    thr.set_accessing_user_memory(false);
+    result
 }
 
 #[allow(dead_code)]
