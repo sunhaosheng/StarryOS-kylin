@@ -1,4 +1,3 @@
-//compile_error!("test");
 //! User address space management.
 
 use alloc::{borrow::ToOwned, string::String, vec, vec::Vec};
@@ -7,7 +6,7 @@ use core::{
     hint::{likely, unlikely},
     iter,
     mem::MaybeUninit,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use axerrno::{AxError, AxResult};
@@ -125,11 +124,14 @@ fn map_elf<'a>(
             ph.offset,
             Some(ph.offset + ph.file_size),
         );
+        
+        let seg_flags = mapping_flags(ph.flags);
+        
         uspace.map(
             seg_start.align_down_4k(),
             seg_align_size,
-            mapping_flags(ph.flags),
-            false,
+            seg_flags,
+            true,  // Populate ELF segments immediately
             backend,
         )?;
 
@@ -204,47 +206,51 @@ impl ElfLoader {
         uspace.clear();
         map_trampoline(uspace)?;
 
-        let entry = self.0.front().unwrap();
-        let ldso = if let Some(header) = entry
-            .borrow_elf()
-            .ph
-            .iter()
-            .find(|ph| ph.get_type() == Ok(xmas_elf::program::Type::Interp))
-        {
-            let cache = entry.borrow_cache();
-            let mut data = vec![0; header.file_size as usize];
-            let read = cache.read_at(&mut data.as_mut_slice(), header.offset)?;
-            assert_eq!(data.len(), read);
+        let mut ldso_path = None;
+        let entry_ptr = {
+            let entry = self.0.front().unwrap();
+            if let Some(header) = entry
+                .borrow_elf()
+                .ph
+                .iter()
+                .find(|ph| ph.get_type() == Ok(xmas_elf::program::Type::Interp))
+            {
+                let cache = entry.borrow_cache();
+                let mut data = vec![0; header.file_size as usize];
+                let read = cache.read_at(&mut data.as_mut_slice(), header.offset)?;
+                assert_eq!(data.len(), read);
 
-            let ldso = CStr::from_bytes_with_nul(&data)
-                .ok()
-                .and_then(|cstr| cstr.to_str().ok())
-                .ok_or(AxError::InvalidInput)?;
-            debug!("Loading dynamic linker: {ldso}");
-            Some(ldso.to_owned())
-        } else {
-            None
+                let ldso = CStr::from_bytes_with_nul(&data)
+                    .ok()
+                    .and_then(|cstr| cstr.to_str().ok())
+                    .ok_or(AxError::InvalidInput)?;
+                debug!("Loading dynamic linker: {ldso}");
+                ldso_path = Some(ldso.to_owned());
+            }
+            entry as *const ElfCacheEntry
         };
 
-        let (elf, ldso) = if let Some(ldso) = ldso {
+        let mut ldso_entry_ptr = None;
+        if let Some(ldso) = ldso_path.as_ref() {
             let loc = FS_CONTEXT.lock().resolve(ldso)?;
             if !self.0.touch(|e| e.borrow_cache().location().ptr_eq(&loc)) {
                 let e = ElfCacheEntry::load(loc)?.map_err(|_| AxError::InvalidInput)?;
                 self.0.insert(e);
             }
+            ldso_entry_ptr = Some(self.0.front().unwrap() as *const ElfCacheEntry);
+        }
 
-            let mut iter = self.0.iter();
-            let ldso = iter.next().unwrap();
-            let elf = iter.next().unwrap();
-            (elf, Some(ldso))
-        } else {
-            (entry, None)
-        };
-
-        let elf = map_elf(uspace, crate::config::USER_SPACE_BASE, elf)?;
-        let ldso = ldso
-            .map(|elf| map_elf(uspace, crate::config::USER_INTERP_BASE, elf))
-            .transpose()?;
+        let elf = unsafe { map_elf(uspace, crate::config::USER_SPACE_BASE, &*entry_ptr)? };
+        let ldso =
+            if let (Some(ldso_entry_ptr), Some(_ldso_path)) = (ldso_entry_ptr, ldso_path.as_ref()) {
+                Some(map_elf(
+                    uspace,
+                    crate::config::USER_INTERP_BASE,
+                    unsafe { &*ldso_entry_ptr },
+                )?)
+            } else {
+                None
+            };
 
         let entry = VirtAddr::from_usize(
             ldso.as_ref()
@@ -353,20 +359,20 @@ pub fn load_user_app(
     Ok((entry, user_sp))
 }
 
-static ACCESSING_USER_MEM: AtomicUsize = AtomicUsize::new(0);
+static ACCESSING_USER_MEM: AtomicBool = AtomicBool::new(false);
 
 /// Enables scoped access into user memory, allowing page faults to occur inside
 /// kernel.
 pub fn access_user_memory<R>(f: impl FnOnce() -> R) -> R {
-    ACCESSING_USER_MEM.fetch_add(1, Ordering::Release);
+    ACCESSING_USER_MEM.store(true, Ordering::Release);
     let result = f();
-    ACCESSING_USER_MEM.fetch_sub(1, Ordering::Release);
+    ACCESSING_USER_MEM.store(false, Ordering::Release);
     result
 }
 
 /// Check if the current thread is accessing user memory.
 pub fn is_accessing_user_memory() -> bool {
-    ACCESSING_USER_MEM.load(Ordering::Acquire) > 0
+    ACCESSING_USER_MEM.load(Ordering::Acquire)
 }
 
 #[allow(dead_code)]
@@ -391,25 +397,91 @@ unsafe impl VmIo for Vm {
 
     fn read(&mut self, start: usize, buf: &mut [MaybeUninit<u8>]) -> VmResult {
         check_access(start, buf.len())?;
+        
+        // First attempt to read
         let failed_at = access_user_memory(|| unsafe {
             user_copy(buf.as_mut_ptr() as *mut _, start as _, buf.len())
         });
-        if unlikely(failed_at != 0) {
-            Err(VmError::AccessDenied)
-        } else {
-            Ok(())
+        
+        if likely(failed_at == 0) {
+            return Ok(());
         }
+        
+        // Read failed, try to populate pages and retry
+        let fail_offset = buf.len() - failed_at;
+        let fail_addr = VirtAddr::from(start + fail_offset);
+        
+        if let Some(thr) = current().try_as_thread() {
+            let page_start = fail_addr.align_down_4k();
+            let page_end = VirtAddr::from(start + buf.len()).align_up_4k();
+            let populate_size = page_end - page_start;
+            
+            let populate_result = {
+                let mut aspace = thr.proc_data.aspace.lock();
+                aspace.populate_area(
+                    page_start,
+                    populate_size,
+                    MappingFlags::READ | MappingFlags::USER,
+                )
+            };
+            
+            if populate_result.is_ok() {
+                // Retry read
+                let failed_at2 = access_user_memory(|| unsafe {
+                    user_copy(buf.as_mut_ptr() as *mut _, start as _, buf.len())
+                });
+                
+                if failed_at2 == 0 {
+                    return Ok(());
+                }
+            }
+        }
+        
+        Err(VmError::AccessDenied)
     }
 
     fn write(&mut self, start: usize, buf: &[u8]) -> VmResult {
         check_access(start, buf.len())?;
+        
+        // First attempt to write
         let failed_at = access_user_memory(|| unsafe {
             user_copy(start as _, buf.as_ptr() as *const _, buf.len())
         });
-        if unlikely(failed_at != 0) {
-            Err(VmError::AccessDenied)
-        } else {
-            Ok(())
+        
+        if likely(failed_at == 0) {
+            return Ok(());
         }
+        
+        // Write failed, try to populate pages and retry
+        let fail_offset = buf.len() - failed_at;
+        let fail_addr = VirtAddr::from(start + fail_offset);
+        
+        if let Some(thr) = current().try_as_thread() {
+            let page_start = fail_addr.align_down_4k();
+            let page_end = VirtAddr::from(start + buf.len()).align_up_4k();
+            let populate_size = page_end - page_start;
+            
+            let populate_result = {
+                let mut aspace = thr.proc_data.aspace.lock();
+                aspace.populate_area(
+                    page_start,
+                    populate_size,
+                    MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
+                )
+            };
+            
+            if populate_result.is_ok() {
+                // Retry write
+                let failed_at2 = access_user_memory(|| unsafe {
+                    user_copy(start as _, buf.as_ptr() as *const _, buf.len())
+                });
+                
+                if failed_at2 == 0 {
+                    return Ok(());
+                }
+            }
+        }
+        
+        Err(VmError::AccessDenied)
     }
 }

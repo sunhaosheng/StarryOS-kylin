@@ -5,9 +5,9 @@ use axhal::uspace::{ExceptionKind, ReturnReason, UserContext};
 use axtask::{TaskInner, current};
 use bytemuck::AnyBitPattern;
 use linux_raw_sys::general::ROBUST_LIST_LIMIT;
-use memory_addr::VirtAddr;
 use starry_core::{
     futex::FutexKey,
+    mm::access_user_memory,
     shm::SHM_MANAGER,
     task::{
         AsThread, get_process_data, get_task, send_signal_to_process, send_signal_to_thread,
@@ -28,20 +28,17 @@ use crate::{
 pub fn new_user_task(
     name: &str,
     mut uctx: UserContext,
-    set_child_tid: Option<usize>,
+    set_child_tid: Option<&'static mut Pid>,
 ) -> TaskInner {
     TaskInner::new(
         move || {
             let curr = axtask::current();
 
-            if let Some(tid_addr) = set_child_tid {
-                let aspace = curr.as_thread().proc_data.aspace.lock();
-                let tid_value = curr.id().as_u64() as u32;
-                let tid_bytes = tid_value.to_ne_bytes();
-                if let Err(e) = aspace.write(VirtAddr::from_usize(tid_addr), &tid_bytes) {
-                    warn!("Failed to write set_child_tid at {:#x}: {:?}", tid_addr, e);
+            access_user_memory(|| {
+                if let Some(tid) = set_child_tid {
+                    *tid = curr.id().as_u64() as Pid;
                 }
-            }
+            });
 
             info!("Enter user space: ip={:#x}, sp={:#x}", uctx.ip(), uctx.sp());
 
