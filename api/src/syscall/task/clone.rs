@@ -128,7 +128,13 @@ pub fn sys_clone(
     new_uctx.set_retval(0);
 
     let set_child_tid = if flags.contains(CloneFlags::CHILD_SETTID) {
-        Some(UserPtr::<u32>::from(child_tid).get_as_mut()?)
+        info!(
+            "sys_clone: CHILD_SETTID ctid={:#x} pid={:?}",
+            child_tid,
+            current().id()
+        );
+        UserPtr::<u32>::from(child_tid).get_as_mut()?;
+        Some(child_tid)
     } else {
         None
     };
