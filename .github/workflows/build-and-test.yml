@@ -108,7 +108,17 @@ jobs:
               echo "SSTATE_DIR = \"/host-workspace/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
               echo "DL_DIR = \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
               # 禁用 staging 硬链接，避免跨设备链接失败
+              # 注意：旧版 sstate.bbclass 可能不支持此变量，添加 patch 强制使用复制
               echo "STAGING_USE_HARDLINKS = \"0\"" >> $WORKSPACE/build/conf/local.conf
+
+              # 强制修改 staging.bbclass 避免 OSError: [Errno 1] Operation not permitted
+              # 这个问题是因为 docker 挂载卷可能不支持 os.link，或者 staging.bbclass 没处理 EPERM
+              echo "Patching staging.bbclass to catch PermissionError..."
+              STAGING_CLASS="$WORKSPACE/poky/meta/classes/staging.bbclass"
+              if [ -f "$STAGING_CLASS" ]; then
+                 # 在 os.link 异常处理中添加 PermissionError 支持
+                 sed -i 's/if err.errno == errno.EXDEV:/if err.errno == errno.EXDEV or err.errno == errno.EPERM or err.errno == errno.EACCES:/' $STAGING_CLASS
+              fi
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
