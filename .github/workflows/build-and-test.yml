@@ -147,15 +147,15 @@ jobs:
               echo "=== All tests passed ==="
             '
 
-      - name: Cleanup
-        if: always()
-        run: |
-          # 清理可能残留的容器
-          docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f || true
+      # - name: Cleanup
+      #   if: always()
+      #   run: |
+      #     # 清理可能残留的容器
+      #     docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f || true
           
-          # 清理临时构建目录
-          BUILD_DIR=${{ env.HOST_WORKSPACE }}/ci-builds/${{ github.run_id }}
-          if [ -d "$BUILD_DIR" ]; then
-            echo "Cleaning up build directory: $BUILD_DIR"
-            sudo rm -rf "$BUILD_DIR"
-          fi
+      #     # 清理临时构建目录
+      #     BUILD_DIR=${{ env.HOST_WORKSPACE }}/ci-builds/${{ github.run_id }}
+      #     if [ -d "$BUILD_DIR" ]; then
+      #       echo "Cleaning up build directory: $BUILD_DIR"
+      #       sudo rm -rf "$BUILD_DIR"
+      #     fi
