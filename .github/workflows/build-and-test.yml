@@ -95,11 +95,18 @@ jobs:
               fi
               
               echo "=== Install libclang for bindgen ==="
+              apt-get update
               apt-get install -y clang libclang-dev llvm-dev
               # 让 bindgen 能找到 libclang.so
               export LIBCLANG_PATH="$(llvm-config --libdir 2>/dev/null || true)"
+              if [ -z "$LIBCLANG_PATH" ]; then
+                LIBCLANG_PATH="$(ls -d /usr/lib/llvm-*/lib 2>/dev/null | head -n 1 || true)"
+                export LIBCLANG_PATH
+              fi
               echo "LIBCLANG_PATH=$LIBCLANG_PATH"
               ldconfig -p | grep -E 'libclang\.so' || true
+              # 让 bitbake 任务环境继承 LIBCLANG_PATH
+              export BB_ENV_PASSTHROUGH_ADDITIONS="${BB_ENV_PASSTHROUGH_ADDITIONS:+$BB_ENV_PASSTHROUGH_ADDITIONS }LIBCLANG_PATH"
 
 
               # 配置 StarryOS 源码路径（EXTERNALSRC）
