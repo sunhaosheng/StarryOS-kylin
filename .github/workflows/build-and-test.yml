@@ -94,6 +94,17 @@ jobs:
                 cp -a /host-workspace/StarryOS/local_crates $WORKSPACE/StarryOS/local_crates
               fi
               
+              # === verify StarryOS tree ===
+              echo "=== verify StarryOS tree ==="
+              echo "[container] $WORKSPACE/StarryOS/arceos/configs:"
+              ls -la $WORKSPACE/StarryOS/arceos/configs 2>/dev/null || true
+              echo "[container] defconfig.toml:"
+              ls -la $WORKSPACE/StarryOS/arceos/configs/defconfig.toml 2>/dev/null || true
+              echo "[host-mount] defconfig.toml:"
+              ls -la /host-workspace/StarryOS/arceos/configs/defconfig.toml 2>/dev/null || true
+              echo "=========================="
+
+
               # 配置 StarryOS 源码路径（EXTERNALSRC）
               echo "" >> $WORKSPACE/build/conf/local.conf
               echo "# CI 配置：指定 StarryOS 源码路径" >> $WORKSPACE/build/conf/local.conf
@@ -113,7 +124,6 @@ jobs:
               echo "=== Debug for nondeterminism ==="
               bitbake starry -c do_configure -S none || true
               bitbake starry -c do_configure -S printdiff || true
-
 
               echo "=== Building StarryOS kernel ==="
               bitbake starry
