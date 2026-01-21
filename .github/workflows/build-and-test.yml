@@ -86,7 +86,8 @@ jobs:
               mkdir -p $WORKSPACE/StarryOS
               cp -a /source/. $WORKSPACE/StarryOS/
               rm -rf $WORKSPACE/StarryOS/.git $WORKSPACE/StarryOS/target
-
+              chmod -R a+rwX $WORKSPACE/StarryOS
+              
               # 补齐依赖目录（来自宿主机 repo 工作区）
               if [ -d /host-workspace/StarryOS/arceos ]; then
                 rm -rf $WORKSPACE/StarryOS/arceos
