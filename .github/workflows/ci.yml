@@ -77,6 +77,15 @@ jobs:
               echo "=========================================="
               echo ""
               
+              # ==================== 安装依赖 ====================
+              echo "=== Installing Dependencies ==="
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq libclang-dev
+              export LIBCLANG_PATH="/usr/lib/x86_64-linux-gnu"
+              echo "Installed libclang-dev"
+              echo "LIBCLANG_PATH=${LIBCLANG_PATH}"
+              echo ""
+              
               # ==================== 环境信息 ====================
               echo "=== Environment Info ==="
               echo "User: $(whoami)"
