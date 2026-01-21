@@ -106,6 +106,8 @@ jobs:
               # 使用强赋值确保复用共享的 sstate-cache 和 downloads
               echo "SSTATE_DIR = \"/host-workspace/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
               echo "DL_DIR = \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
+              # 部分文件系统不支持硬链接，禁止 staging 使用硬链接改用复制，避免 PermissionError
+              echo "STAGING_USE_HARDLINKS = \"0\"" >> $WORKSPACE/build/conf/local.conf
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
