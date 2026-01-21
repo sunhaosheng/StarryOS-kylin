@@ -43,11 +43,21 @@ jobs:
           echo "Host Workspace: ${{ env.HOST_WORKSPACE }}"
           echo ""
           
-      - name: Copy repo configuration from host
+      - name: Initialize repo in CI workspace
         run: |
-          echo "=== Copy Repo Manifest ==="
-          cp -r ${{ env.HOST_WORKSPACE }}/.repo ${{ env.CI_WORKSPACE }}/code/
-          echo "Repo manifest copied"
+          echo "=== Initialize Repo in CI Workspace ==="
+          cd ${{ env.CI_WORKSPACE }}/code
+          
+          # 使用 host 的 manifest 初始化 repo
+          # --reference 指向 host workspace，复用 git objects，避免重复下载
+          repo init \
+            -u ${{ env.HOST_WORKSPACE }}/.repo/manifests \
+            -b main \
+            --no-clone-bundle \
+            --reference=${{ env.HOST_WORKSPACE }}
+          
+          echo "✓ Repo initialized with reference to host workspace"
+          echo ""
           
       - name: Sync all sub-projects via repo
         run: |
@@ -64,8 +74,13 @@ jobs:
           repo sync -c --no-clone-bundle -j$(nproc)
           
           echo ""
-          echo "Sub-projects synced:"
+          echo "✓ Sub-projects synced:"
           ls -la StarryOS/ 2>/dev/null | head -10 || echo "StarryOS will be created from PR code"
+          echo ""
+          
+          # 显示 repo 状态
+          echo "Repo status summary:"
+          repo info | head -20
           
       - name: Checkout StarryOS to PR commit
         uses: actions/checkout@v4
