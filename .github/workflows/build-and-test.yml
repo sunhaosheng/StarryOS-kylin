@@ -108,11 +108,16 @@ jobs:
               echo "DL_DIR = \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
 
               # 配置 LIBCLANG_PATH 指向挂载的宿主机 libclang 目录
-              # 同时设置 LD_LIBRARY_PATH 让动态链接器能找到 libLLVM（使用 prepend 避免循环引用）
+              # 使用 BB_ENV_PASSTHROUGH_ADDITIONS 让 BitBake 透传这些环境变量到编译任务
               echo "" >> $WORKSPACE/build/conf/local.conf
               echo "# CI 配置：让 bindgen 能找到 libclang 和 libLLVM" >> $WORKSPACE/build/conf/local.conf
-              echo "export LIBCLANG_PATH = \"/host-lib\"" >> $WORKSPACE/build/conf/local.conf
-              echo "export LD_LIBRARY_PATH:prepend = \"/host-lib:\"" >> $WORKSPACE/build/conf/local.conf
+              echo "BB_ENV_PASSTHROUGH_ADDITIONS:append = \" LIBCLANG_PATH LD_LIBRARY_PATH\"" >> $WORKSPACE/build/conf/local.conf
+              echo "LIBCLANG_PATH = \"/host-lib\"" >> $WORKSPACE/build/conf/local.conf
+              echo "LD_LIBRARY_PATH:prepend = \"/host-lib:\"" >> $WORKSPACE/build/conf/local.conf
+              
+              # 同时导出到当前 shell 环境（确保 bitbake 启动时就有这些变量）
+              export LIBCLANG_PATH="/host-lib"
+              export LD_LIBRARY_PATH="/host-lib:$LD_LIBRARY_PATH"
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
