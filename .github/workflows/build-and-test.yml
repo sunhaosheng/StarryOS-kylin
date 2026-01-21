@@ -157,5 +157,5 @@ jobs:
           BUILD_DIR=${{ env.HOST_WORKSPACE }}/ci-builds/${{ github.run_id }}
           if [ -d "$BUILD_DIR" ]; then
             echo "Cleaning up build directory: $BUILD_DIR"
-            rm -rf "$BUILD_DIR"
+            sudo rm -rf "$BUILD_DIR"
           fi
