@@ -43,36 +43,21 @@ jobs:
           echo "Host Workspace: ${{ env.HOST_WORKSPACE }}"
           echo ""
           
-      - name: Copy repo configuration from host
+      - name: Copy workspace from host (excluding build)
         run: |
-          echo "=== Copy Repo Manifest ==="
-          cp -r ${{ env.HOST_WORKSPACE }}/.repo ${{ env.CI_WORKSPACE }}/code/
-          echo "Repo manifest copied"
+          echo "=== Copy Complete Workspace (excluding build) ==="
           
-      - name: Sync all sub-projects via repo
-        run: |
-          echo "=== Repo Sync ==="
-          cd ${{ env.CI_WORKSPACE }}/code
+          # 复制除 build 外的所有内容（包括 .repo，成为完整的 repo 仓库）
+          rsync -a --exclude='build/' \
+            ${{ env.HOST_WORKSPACE }}/ \
+            ${{ env.CI_WORKSPACE }}/code/
           
-          # 如果 StarryOS 目录存在且有冲突，先删除它（会被 PR 代码替换）
-          if [ -d "StarryOS" ]; then
-            echo "Removing existing StarryOS directory (will be replaced with PR code)"
-            rm -rf StarryOS
-          fi
-          
-          # 同步所有子项目到默认分支（StarryOS 会被跳过，因为目录不存在）
-          repo sync -c --no-clone-bundle -j$(nproc)
-          
+          echo "✓ Workspace copied (including .repo)"
           echo ""
-          echo "✓ Sub-projects synced:"
-          ls -la StarryOS/ 2>/dev/null | head -10 || echo "StarryOS will be created from PR code"
-          echo ""
+          echo "Contents:"
+          ls -la ${{ env.CI_WORKSPACE }}/code/ | head -15
           
-          # 显示 repo 状态
-          echo "Repo status summary:"
-          repo info | head -20
-          
-      - name: Checkout StarryOS to PR commit
+      - name: Checkout StarryOS PR code
         uses: actions/checkout@v4
         with:
           path: ${{ env.CI_WORKSPACE }}/code/StarryOS-pr
@@ -83,48 +68,75 @@ jobs:
           echo "=== Replace StarryOS with PR Code ==="
           cd ${{ env.CI_WORKSPACE }}/code
           
-          # repo sync 创建的目录结构：
-          #   StarryOS/arceos/          <- 子项目，需要保留
-          #   StarryOS/local_crates/    <- 子项目，需要保留
+          # 删除从 host 复制的 StarryOS（保留子项目目录）
+          # 子项目目录结构：
+          #   StarryOS/arceos/          <- 由 repo 管理
+          #   StarryOS/local_crates/    <- 由 repo 管理
           
           # 临时保存子项目
           echo "Preserving sub-projects..."
           mkdir -p StarryOS-subprojects
           if [ -d "StarryOS/arceos" ]; then
             mv StarryOS/arceos StarryOS-subprojects/
-            echo "  - arceos preserved"
+            echo "  ✓ arceos preserved"
           fi
           if [ -d "StarryOS/local_crates" ]; then
             mv StarryOS/local_crates StarryOS-subprojects/
-            echo "  - local_crates preserved"
+            echo "  ✓ local_crates preserved"
           fi
           
-          # 删除 StarryOS 主目录（现在是空的或只有 repo sync 的占位符）
+          # 删除 StarryOS 主目录
           rm -rf StarryOS
           
           # 使用 PR 代码
           mv StarryOS-pr StarryOS
           
           # 恢复子项目
-          echo "Restoring sub-projects to PR code..."
+          echo "Restoring sub-projects..."
           if [ -d "StarryOS-subprojects/arceos" ]; then
             mv StarryOS-subprojects/arceos StarryOS/
-            echo "  - arceos restored"
+            echo "  ✓ arceos restored"
           fi
           if [ -d "StarryOS-subprojects/local_crates" ]; then
             mv StarryOS-subprojects/local_crates StarryOS/
-            echo "  - local_crates restored"
+            echo "  ✓ local_crates restored"
           fi
           rm -rf StarryOS-subprojects
           
-          # 显示最终结构
+          # 显示 PR 信息
           cd StarryOS
           echo ""
           echo "PR Commit: $(git rev-parse HEAD)"
           echo "PR Branch: $(git branch --show-current 2>/dev/null || echo 'detached')"
+          
+      - name: Sync sub-projects (arceos, local_crates)
+        run: |
+          echo "=== Sync Sub-projects ==="
+          cd ${{ env.CI_WORKSPACE }}/code
+          
+          # 只同步 arceos 和 local_crates 下的子项目
+          # StarryOS 已经是 PR 代码，不需要同步
+          repo sync -c --no-clone-bundle -j$(nproc) \
+            StarryOS/arceos \
+            StarryOS/local_crates/arm-gic \
+            StarryOS/local_crates/axcpu \
+            StarryOS/local_crates/axdriver_crates \
+            StarryOS/local_crates/axplat_crates \
+            StarryOS/local_crates/axplat-aarch64-crosvm-virt \
+            StarryOS/local_crates/fdtree-rs \
+            StarryOS/local_crates/kernel_guard \
+            StarryOS/local_crates/page_table_multiarch
+          
           echo ""
-          echo "Sub-projects:"
-          ls -la | grep "^d" | grep -E "arceos|local_crates" || echo "  (none)"
+          echo "✓ Sub-projects synced"
+          echo ""
+          echo "Sub-project versions:"
+          cd StarryOS
+          for dir in arceos local_crates/*; do
+            if [ -d "$dir/.git" ]; then
+              echo "  $dir: $(git -C $dir rev-parse --short HEAD)"
+            fi
+          done
           
       - name: Handle sub-repository PR (if triggered by sub-repo)
         if: github.event_name == 'repository_dispatch'
@@ -257,22 +269,28 @@ jobs:
           echo "=== Verify Code Structure ==="
           cd ${{ env.CI_WORKSPACE }}/code
           
-          echo "Top-level directories:"
-          ls -la | grep "^d" | awk '{print $NF}'
-          echo ""
-          
-          echo "StarryOS contents:"
-          ls -la StarryOS/ | head -15
-          echo ""
-          
           # 检查关键组件
-          for dir in "StarryOS/arceos" "StarryOS/local_crates" "poky" "meta-starry" "meta-openembedded"; do
+          echo "Checking required directories..."
+          MISSING=0
+          for dir in "StarryOS" "StarryOS/arceos" "StarryOS/local_crates" "poky" "meta-starry" "meta-openembedded" ".repo"; do
             if [ -d "$dir" ]; then
-              echo "✓ $dir"
+              echo "  ✓ $dir"
             else
-              echo "✗ $dir (missing)"
+              echo "  ✗ $dir (MISSING)"
+              MISSING=1
             fi
           done
+          
+          if [ $MISSING -eq 1 ]; then
+            echo ""
+            echo "ERROR: Some required directories are missing!"
+            exit 1
+          fi
+          
+          echo ""
+          echo "StarryOS PR info:"
+          echo "  Commit: $(git -C StarryOS rev-parse --short HEAD)"
+          echo "  arceos: $(git -C StarryOS/arceos rev-parse --short HEAD 2>/dev/null || echo 'N/A')"
           
       # ==================== 准备 CI 配置 ====================
       - name: Prepare CI build configuration
