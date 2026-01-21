@@ -65,6 +65,7 @@ jobs:
               if [ -d /host-workspace/build/downloads ]; then
                 rsync -a /host-workspace/build/downloads/ /build/downloads/
               fi
+              chmod -R a+rwX /build/sstate-cache /build/downloads
                          
               # 符号链接其他 Yocto 组件（只读）
               ln -sfn /host-workspace/poky $WORKSPACE/poky
