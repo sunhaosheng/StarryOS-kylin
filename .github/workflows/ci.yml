@@ -43,31 +43,11 @@ jobs:
           echo "Host Workspace: ${{ env.HOST_WORKSPACE }}"
           echo ""
           
-      - name: Initialize repo in CI workspace
+      - name: Copy repo configuration from host
         run: |
-          echo "=== Initialize Repo in CI Workspace ==="
-          cd ${{ env.CI_WORKSPACE }}/code
-          
-          # 复制 host 的 repo 工具和 manifest（避免从 Google 服务器下载）
-          mkdir -p .repo
-          cp -r ${{ env.HOST_WORKSPACE }}/.repo/repo .repo/
-          cp -r ${{ env.HOST_WORKSPACE }}/.repo/manifests .repo/
-          cp -r ${{ env.HOST_WORKSPACE }}/.repo/manifests.git .repo/
-          cp ${{ env.HOST_WORKSPACE }}/.repo/manifest.xml .repo/
-          
-          echo "✓ Repo tools and manifests copied from host"
-          echo ""
-          
-          # 使用本地的 repo 初始化，不需要从网络下载
-          # --reference 指向 host workspace，复用 git objects
-          .repo/repo/repo init \
-            -u ${{ env.HOST_WORKSPACE }}/.repo/manifests \
-            -b main \
-            --no-clone-bundle \
-            --reference=${{ env.HOST_WORKSPACE }}
-          
-          echo "✓ Repo initialized with reference to host workspace"
-          echo ""
+          echo "=== Copy Repo Manifest ==="
+          cp -r ${{ env.HOST_WORKSPACE }}/.repo ${{ env.CI_WORKSPACE }}/code/
+          echo "Repo manifest copied"
           
       - name: Sync all sub-projects via repo
         run: |
