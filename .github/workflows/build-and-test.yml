@@ -33,6 +33,7 @@ jobs:
           chmod 777 $BUILD_DIR
 
           docker run --rm \
+            --user root \
             --privileged \
             -v ${{ github.workspace }}:/source:ro \
             -v ${{ env.HOST_WORKSPACE }}/poky:/host-workspace/poky:ro \
