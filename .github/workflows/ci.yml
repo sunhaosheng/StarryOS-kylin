@@ -41,19 +41,22 @@ jobs:
       # ==================== Docker 构建和测试 ====================
       - name: Install libclang on host
         run: |
-          # 在 host 上安装 libclang（如果尚未安装）
-          if ! dpkg -l | grep -q libclang-dev; then
-            echo "Installing libclang-dev on host..."
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq libclang-dev
-          else
-            echo "libclang-dev already installed"
+          # 在 host 上安装 libclang-dev（提供 libclang.so 符号链接）
+          echo "Installing libclang-dev on host..."
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libclang-dev
+          
+          # 查找 libclang.so 的位置（不带版本号的符号链接）
+          LIBCLANG_SO=$(find /usr/lib /lib -name "libclang.so" -type l 2>/dev/null | head -1)
+          if [ -z "$LIBCLANG_SO" ]; then
+            echo "ERROR: libclang.so not found!"
+            exit 1
           fi
           
-          # 查找 libclang.so 的位置
-          LIBCLANG_PATH=$(find /usr/lib -name "libclang.so*" -type f 2>/dev/null | head -1 | xargs dirname)
-          echo "LIBCLANG_PATH=${LIBCLANG_PATH}"
-          echo "LIBCLANG_PATH=${LIBCLANG_PATH}" >> $GITHUB_ENV
+          LIBCLANG_DIR=$(dirname "$LIBCLANG_SO")
+          echo "Found libclang.so at: $LIBCLANG_SO"
+          echo "LIBCLANG_DIR=$LIBCLANG_DIR"
+          echo "LIBCLANG_DIR=$LIBCLANG_DIR" >> $GITHUB_ENV
       
       - name: Build and Test in Docker
         run: |
@@ -76,7 +79,7 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host/sstate-cache \
             -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host/downloads \
             -v $BUILD_DIR:/build \
-            -v ${{ env.LIBCLANG_PATH }}:/usr/lib/llvm:ro \
+            -v ${{ env.LIBCLANG_DIR }}:/usr/lib/llvm:ro \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             -e TRIGGER_REPO=${{ env.TRIGGER_REPO }} \
             -e TRIGGER_SHA=${{ env.TRIGGER_SHA }} \
