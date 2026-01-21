@@ -1,0 +1,41 @@
+# arceos 仓库 - 触发 StarryOS CI
+#
+# 将此文件放在 arceos 仓库的 .github/workflows/ 目录
+
+name: Trigger StarryOS CI
+
+on:
+  pull_request:
+    branches:
+      - dev
+    types: [opened, synchronize, reopened]
+
+jobs:
+  trigger-starryos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger StarryOS CI
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.STARRYOS_CI_TOKEN }}
+          repository: kylin-x-kernel/StarryOS
+          event-type: sub-repo-pr
+          client-payload: |
+            {
+              "trigger_repo": "arceos",
+              "trigger_sha": "${{ github.event.pull_request.head.sha }}",
+              "trigger_ref": "${{ github.event.pull_request.head.ref }}",
+              "trigger_pr": "${{ github.event.pull_request.number }}",
+              "trigger_title": "${{ github.event.pull_request.title }}"
+            }
+          
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 **StarryOS CI Triggered**\n\nThis PR will be tested in the full StarryOS environment.\n\n👉 [View CI Results](https://github.com/kylin-x-kernel/StarryOS/actions)'
+            })

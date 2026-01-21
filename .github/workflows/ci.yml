@@ -48,9 +48,19 @@ jobs:
           echo "=== Initialize Repo in CI Workspace ==="
           cd ${{ env.CI_WORKSPACE }}/code
           
-          # 使用 host 的 manifest 初始化 repo
-          # --reference 指向 host workspace，复用 git objects，避免重复下载
-          repo init \
+          # 复制 host 的 repo 工具和 manifest（避免从 Google 服务器下载）
+          mkdir -p .repo
+          cp -r ${{ env.HOST_WORKSPACE }}/.repo/repo .repo/
+          cp -r ${{ env.HOST_WORKSPACE }}/.repo/manifests .repo/
+          cp -r ${{ env.HOST_WORKSPACE }}/.repo/manifests.git .repo/
+          cp ${{ env.HOST_WORKSPACE }}/.repo/manifest.xml .repo/
+          
+          echo "✓ Repo tools and manifests copied from host"
+          echo ""
+          
+          # 使用本地的 repo 初始化，不需要从网络下载
+          # --reference 指向 host workspace，复用 git objects
+          .repo/repo/repo init \
             -u ${{ env.HOST_WORKSPACE }}/.repo/manifests \
             -b main \
             --no-clone-bundle \

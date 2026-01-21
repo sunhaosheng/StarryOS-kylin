@@ -1,0 +1,45 @@
+# 子仓库 CI 触发模板
+#
+# 使用方法：
+# 1. 将此文件复制到子仓库的 .github/workflows/ 目录
+# 2. 替换 REPO_NAME 为实际的仓库名（如 arceos、axcpu 等）
+# 3. 确认 DEV_BRANCH 是否为 dev（某些仓库可能是 main）
+# 4. 在子仓库添加 secret: STARRYOS_CI_TOKEN
+
+name: Trigger StarryOS CI
+
+on:
+  pull_request:
+    branches:
+      - dev  # 根据实际情况修改（某些仓库可能是 main）
+    types: [opened, synchronize, reopened]
+
+jobs:
+  trigger-starryos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger StarryOS CI
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.STARRYOS_CI_TOKEN }}
+          repository: kylin-x-kernel/StarryOS
+          event-type: sub-repo-pr
+          client-payload: |
+            {
+              "trigger_repo": "REPO_NAME",
+              "trigger_sha": "${{ github.event.pull_request.head.sha }}",
+              "trigger_ref": "${{ github.event.pull_request.head.ref }}",
+              "trigger_pr": "${{ github.event.pull_request.number }}",
+              "trigger_title": "${{ github.event.pull_request.title }}"
+            }
+          
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 StarryOS CI has been triggered for this PR.\n\nView the results at: https://github.com/kylin-x-kernel/StarryOS/actions'
+            })
