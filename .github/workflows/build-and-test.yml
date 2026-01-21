@@ -98,16 +98,16 @@ jobs:
               # 使用固定路径 /build/workspace/StarryOS 确保 hash 一致性
               cat >> $WORKSPACE/build/conf/local.conf << "EOFCONF"
 
-# CI 配置：指定 StarryOS 源码路径
-EXTERNALSRC:pn-starry = "/build/workspace/StarryOS"
-EXTERNALSRC_BUILD:pn-starry = "/build/workspace/StarryOS"
-SSTATE_DIR = "/host-workspace/build/sstate-cache"
-DL_DIR = "/host-workspace/build/downloads"
+              # CI 配置：指定 StarryOS 源码路径
+              EXTERNALSRC:pn-starry = "/build/workspace/StarryOS"
+              EXTERNALSRC_BUILD:pn-starry = "/build/workspace/StarryOS"
+              SSTATE_DIR = "/host-workspace/build/sstate-cache"
+              DL_DIR = "/host-workspace/build/downloads"
 
-# 禁用 sstate 签名检查以避免 hash 不匹配问题
-BB_HASHSERVE = ""
-BB_SIGNATURE_HANDLER = "noop"
-EOFCONF
+              # 禁用 sstate 签名检查以避免 hash 不匹配问题
+              BB_HASHSERVE = ""
+              BB_SIGNATURE_HANDLER = "noop"
+              EOFCONF
 
               echo "=== local.conf (tail) ==="
               tail -15 $WORKSPACE/build/conf/local.conf
