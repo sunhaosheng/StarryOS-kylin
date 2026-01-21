@@ -56,20 +56,9 @@ jobs:
               echo "=== Setting up build environment ==="
               WORKSPACE=/build/workspace
               mkdir -p $WORKSPACE
-              
-              # 复制 poky 到容器内（需要修改 staging.bbclass）
-              echo "Copying poky to container (to allow patching)..."
-              cp -a /host-workspace/poky $WORKSPACE/poky
-              
-              # 修补 staging.bbclass：让 EPERM 和 EACCES 错误也降级为复制
-              echo "Patching staging.bbclass to handle PermissionError..."
-              STAGING_CLASS="$WORKSPACE/poky/meta/classes/staging.bbclass"
-              if [ -f "$STAGING_CLASS" ]; then
-                 sed -i "s/if err.errno == errno.EXDEV:/if err.errno in (errno.EXDEV, errno.EPERM, errno.EACCES):/" "$STAGING_CLASS"
-                 echo "  Patched staging.bbclass"
-              fi
-              
+                         
               # 符号链接其他 Yocto 组件（只读）
+              ln -sfn /host-workspace/poky $WORKSPACE/poky
               ln -sfn /host-workspace/meta-starry $WORKSPACE/meta-starry
               ln -sfn /host-workspace/meta-openembedded $WORKSPACE/meta-openembedded 2>/dev/null || true
 
