@@ -28,6 +28,15 @@ jobs:
 
       - name: Build and Test in Docker
         run: |
+          # 在宿主机本地磁盘创建临时工作区（支持硬链接）
+          BUILD_DIR=${{ env.HOST_WORKSPACE }}/ci-builds/${{ github.run_id }}
+          mkdir -p $BUILD_DIR/workspace/build/conf
+          chmod -R 777 $BUILD_DIR
+          
+          # 复制配置文件到临时目录（不修改宿主机原文件）
+          cp ${{ env.HOST_WORKSPACE }}/build/conf/bblayers.conf $BUILD_DIR/workspace/build/conf/
+          cp ${{ env.HOST_WORKSPACE }}/build/conf/local.conf $BUILD_DIR/workspace/build/conf/
+          
           docker run --rm \
             --user root \
             --privileged \
@@ -36,8 +45,9 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/meta-starry:/host-workspace/meta-starry:ro \
             -v ${{ env.HOST_WORKSPACE }}/meta-openembedded:/host-workspace/meta-openembedded:ro \
             -v ${{ env.HOST_WORKSPACE }}/StarryOS:/host-workspace/StarryOS:ro \
-            -v ${{ env.HOST_WORKSPACE }}/build/conf:/host-workspace/build/conf:ro \
-            -v ${{ env.HOST_WORKSPACE }}/build:/build/workspace/build \
+            -v $BUILD_DIR:/build \
+            -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/build/workspace/build/sstate-cache \
+            -v ${{ env.HOST_WORKSPACE }}/build/downloads:/build/workspace/build/downloads \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             -e http_proxy="http://10.41.113.211:7897" \
             -e https_proxy="http://10.41.113.211:7897" \
@@ -55,21 +65,14 @@ jobs:
               ln -sfn /host-workspace/meta-starry $WORKSPACE/meta-starry
               ln -sfn /host-workspace/meta-openembedded $WORKSPACE/meta-openembedded 2>/dev/null || true
 
-              # build 目录已直接挂载到 $WORKSPACE/build，无需创建符号链接
-              # 只需确保 conf 目录存在
-              mkdir -p $WORKSPACE/build/conf
-              
-              # 复制并修复 bblayers.conf 中的路径（使用传入的 HOST_PATH 变量）
-              cp /host-workspace/build/conf/bblayers.conf $WORKSPACE/build/conf/bblayers.conf
+              # build 目录结构已在宿主机准备好
+              # 修复 bblayers.conf 中的路径（修改的是临时副本，不影响宿主机）
               sed -i "s|$HOST_PATH|$WORKSPACE|g" $WORKSPACE/build/conf/bblayers.conf
               
               # 显示修改后的配置用于调试
               echo "=== bblayers.conf ==="
               cat $WORKSPACE/build/conf/bblayers.conf
               echo "===================="
-              
-              # 复制其他配置文件
-              cp /host-workspace/build/conf/local.conf $WORKSPACE/build/conf/local.conf 2>/dev/null || true
               
               # 同步 CI 触发的 StarryOS 代码
               echo "Copying StarryOS source code..."
@@ -140,3 +143,10 @@ jobs:
         run: |
           # 清理可能残留的容器
           docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f || true
+          
+          # 清理临时构建目录
+          BUILD_DIR=${{ env.HOST_WORKSPACE }}/ci-builds/${{ github.run_id }}
+          if [ -d "$BUILD_DIR" ]; then
+            echo "Cleaning up build directory: $BUILD_DIR"
+            rm -rf "$BUILD_DIR"
+          fi
