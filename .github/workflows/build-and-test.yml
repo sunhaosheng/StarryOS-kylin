@@ -110,6 +110,11 @@ jobs:
               cd $WORKSPACE
               source poky/oe-init-build-env build
               
+              echo "=== Debug for nondeterminism ==="
+              bitbake starry -c do_configure -S none || true
+              bitbake starry -c do_configure -S printdiff || true
+
+
               echo "=== Building StarryOS kernel ==="
               bitbake starry
               
