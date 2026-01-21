@@ -43,6 +43,21 @@ jobs:
           echo "Host Workspace: ${{ env.HOST_WORKSPACE }}"
           echo ""
           
+      - name: Debug - Check user and permissions
+        run: |
+          echo "=== Debug Info ==="
+          echo "Current user: $(whoami)"
+          echo "User ID: $(id)"
+          echo ""
+          echo "Host workspace permissions:"
+          ls -ld ${{ env.HOST_WORKSPACE }} || echo "Cannot access host workspace"
+          echo ""
+          echo "Parent directory permissions:"
+          ls -ld $(dirname ${{ env.HOST_WORKSPACE }}) || echo "Cannot access parent"
+          echo ""
+          echo "Test read access:"
+          ls ${{ env.HOST_WORKSPACE }} >/dev/null 2>&1 && echo "✓ Can read host workspace" || echo "✗ Cannot read host workspace"
+          
       - name: Copy workspace from host (excluding build)
         run: |
           echo "=== Copy Complete Workspace (excluding build) ==="
