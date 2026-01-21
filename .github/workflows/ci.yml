@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DOCKER_IMAGE: crops/poky:ubuntu-22.04
+  DOCKER_IMAGE: yocto-builder:latest
   HOST_WORKSPACE: /home/yean/code/starryos-workspace
   PROXY_HOST: 10.41.113.211:7897
 
@@ -39,7 +39,6 @@ jobs:
           fetch-depth: 0
 
       # ==================== Docker 构建和测试 ====================
-      
       - name: Build and Test in Docker
         run: |
           # 创建临时构建目录
@@ -58,15 +57,13 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/StarryOS/arceos:/host/arceos:ro \
             -v ${{ env.HOST_WORKSPACE }}/StarryOS/local_crates:/host/local_crates:ro \
             -v ${{ env.HOST_WORKSPACE }}/build/conf:/host/conf:ro \
-            -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host/sstate-cache \
-            -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host/downloads \
+            -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host/sstate-cache:ro \
+            -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host/downloads:ro \
             -v $BUILD_DIR:/build \
-            -v /usr/lib/llvm-18/lib:/usr/lib/llvm:ro \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             -e TRIGGER_REPO=${{ env.TRIGGER_REPO }} \
             -e TRIGGER_SHA=${{ env.TRIGGER_SHA }} \
             -e TRIGGER_REF=${{ env.TRIGGER_REF }} \
-            -e LIBCLANG_PATH=/usr/lib/llvm \
             -e http_proxy="http://${{ env.PROXY_HOST }}" \
             -e https_proxy="http://${{ env.PROXY_HOST }}" \
             -e HTTP_PROXY="http://${{ env.PROXY_HOST }}" \
@@ -83,7 +80,6 @@ jobs:
               # ==================== 环境信息 ====================
               echo "=== Environment Info ==="
               echo "User: $(whoami)"
-              echo "LIBCLANG_PATH: ${LIBCLANG_PATH}"
               echo "Trigger Repo: ${TRIGGER_REPO:-StarryOS (direct)}"
               echo "Trigger SHA: ${TRIGGER_SHA:-N/A}"
               echo ""
@@ -242,15 +238,16 @@ jobs:
                 echo "EXTERNALSRC_pn-starry = \"$WORKSPACE/StarryOS\""
                 echo "EXTERNALSRC_BUILD_pn-starry = \"$WORKSPACE/StarryOS\""
                 echo ""
-                echo "# libclang 路径 - 用于 bindgen (Rust FFI)"
-                echo "export LIBCLANG_PATH = \"/usr/lib/llvm\""
-                echo ""
-                echo "# 缓存目录配置"
+                echo "# ==================== 缓存和镜像配置 ===================="
+                echo "# 构建时写入临时目录（CI 结束后清理）"
                 echo "SSTATE_DIR = \"/build/sstate-cache\""
-                echo "DL_DIR = \"/host/downloads\""
+                echo "DL_DIR = \"/build/downloads\""
                 echo ""
-                echo "# sstate mirror - 从 host 读取已有缓存"
+                echo "# sstate mirror - 从 host 只读镜像读取已有缓存"
                 echo "SSTATE_MIRRORS = \"file://.* file:///host/sstate-cache/PATH\""
+                echo ""
+                echo "# downloads mirror - 优先从 host 只读镜像获取源码包"
+                echo "PREMIRRORS:prepend = \"file://.*/.* file:///host/downloads/PATH \\n\""
               } >> $WORKSPACE/build/conf/local.conf
               
               echo "Configuration files created:"
