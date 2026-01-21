@@ -41,11 +41,6 @@ jobs:
       # ==================== Docker 构建和测试 ====================
       - name: Build and Test in Docker
         run: |
-          # 创建临时构建目录
-          BUILD_DIR=/tmp/starry-build-${{ github.run_id }}
-          mkdir -p $BUILD_DIR
-          chmod 777 $BUILD_DIR
-
           docker run --rm \
             --user root \
             --privileged \
@@ -59,7 +54,7 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/build/conf:/host/conf:ro \
             -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host/sstate-cache:ro \
             -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host/downloads:ro \
-            -v $BUILD_DIR:/build \
+            --tmpfs /build:exec,size=20G \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             -e TRIGGER_REPO=${{ env.TRIGGER_REPO }} \
             -e TRIGGER_SHA=${{ env.TRIGGER_SHA }} \
@@ -250,6 +245,19 @@ jobs:
                 echo "PREMIRRORS:prepend = \"file://.*/.* file:///host/downloads/PATH \\n\""
               } >> $WORKSPACE/build/conf/local.conf
               
+              # 追加 starry recipe 的 vardepsexclude（修复 EXTERNALSRC basehash 问题）
+              {
+                echo ""
+                echo "# ==================== 修复 EXTERNALSRC 元数据非确定性 ===================="
+                echo "# 排除时间相关变量以稳定 basehash"
+                echo "do_configure_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_compile_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_install_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_deploy_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_populate_sysroot_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_deploy_source_date_epoch_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+              } >> $WORKSPACE/build/conf/local.conf
+              
               echo "Configuration files created:"
               echo ""
               echo "=== bblayers.conf ==="
@@ -323,12 +331,7 @@ jobs:
         run: |
           echo "=== Cleanup ==="
           
-          # 清理临时构建目录
-          BUILD_DIR=/tmp/starry-build-${{ github.run_id }}
-          if [ -d "$BUILD_DIR" ]; then
-            rm -rf "$BUILD_DIR"
-            echo "Removed: $BUILD_DIR"
-          fi
+          # tmpfs /build 会自动清理，无需手动删除
           
           # 清理可能残留的容器
           docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f 2>/dev/null || true
