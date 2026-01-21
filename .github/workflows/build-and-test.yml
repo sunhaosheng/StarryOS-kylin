@@ -32,6 +32,10 @@ jobs:
           mkdir -p $BUILD_DIR
           chmod 777 $BUILD_DIR
 
+          # 查找宿主机的 libclang 路径
+          HOST_LLVM_LIB=$(ls -d /usr/lib/llvm-*/lib 2>/dev/null | head -n 1 || echo "/usr/lib/llvm-14/lib")
+          echo "Host LLVM lib path: $HOST_LLVM_LIB"
+
           docker run --rm \
             --user root \
             --privileged \
@@ -44,7 +48,9 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host-workspace/build/sstate-cache \
             -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host-workspace/build/downloads \
             -v $BUILD_DIR:/build \
+            -v ${HOST_LLVM_LIB}:/host-llvm-lib:ro \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
+            -e HOST_LLVM_LIB=/host-llvm-lib \
             -e http_proxy="http://10.41.113.211:7897" \
             -e https_proxy="http://10.41.113.211:7897" \
             --network host \
@@ -95,21 +101,6 @@ jobs:
                 cp -a /host-workspace/StarryOS/local_crates $WORKSPACE/StarryOS/local_crates
               fi
               
-              echo "=== Install libclang for bindgen ==="
-              apt-get update
-              apt-get install -y clang libclang-dev llvm-dev
-              # 让 bindgen 能找到 libclang.so
-              export LIBCLANG_PATH="$(llvm-config --libdir 2>/dev/null || true)"
-              if [ -z "$LIBCLANG_PATH" ]; then
-                LIBCLANG_PATH="$(ls -d /usr/lib/llvm-*/lib 2>/dev/null | head -n 1 || true)"
-                export LIBCLANG_PATH
-              fi
-              echo "LIBCLANG_PATH=$LIBCLANG_PATH"
-              ldconfig -p | grep -E 'libclang\.so' || true
-              # 让 bitbake 任务环境继承 LIBCLANG_PATH
-              export BB_ENV_PASSTHROUGH_ADDITIONS="${BB_ENV_PASSTHROUGH_ADDITIONS:+$BB_ENV_PASSTHROUGH_ADDITIONS }LIBCLANG_PATH"
-
-
               # 配置 StarryOS 源码路径（EXTERNALSRC）
               echo "" >> $WORKSPACE/build/conf/local.conf
               echo "# CI 配置：指定 StarryOS 源码路径" >> $WORKSPACE/build/conf/local.conf
@@ -117,6 +108,13 @@ jobs:
               echo "EXTERNALSRC_BUILD:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
               echo "SSTATE_DIR ?= \"/host-workspace/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
               echo "DL_DIR ?= \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
+
+              # 配置 LIBCLANG_PATH 让 BitBake 任务能找到 libclang
+              echo "" >> $WORKSPACE/build/conf/local.conf
+              echo "# CI 配置：让 bindgen 能找到 libclang" >> $WORKSPACE/build/conf/local.conf
+              echo "LIBCLANG_PATH = \"/host-llvm-lib\"" >> $WORKSPACE/build/conf/local.conf
+              echo "BB_ENV_PASSTHROUGH_ADDITIONS:append = \" LIBCLANG_PATH\"" >> $WORKSPACE/build/conf/local.conf
+              echo "export LIBCLANG_PATH" >> $WORKSPACE/build/conf/local.conf
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
