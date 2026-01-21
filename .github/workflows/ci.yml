@@ -65,8 +65,7 @@ jobs:
             -e https_proxy="http://${{ env.PROXY_HOST }}" \
             -e HTTP_PROXY="http://${{ env.PROXY_HOST }}" \
             -e HTTPS_PROXY="http://${{ env.PROXY_HOST }}" \
-            ${{ env.DOCKER_IMAGE }} \
-            bash -c '
+            ${{ env.DOCKER_IMAGE }} bash -c '
               set -e
               
               echo "=========================================="
@@ -249,7 +248,7 @@ jobs:
               
               # ==================== 修补 staging.bbclass 处理 EPERM 错误 ====================
               echo "=== Patching staging.bbclass for Docker tmpfs hardlink fix ==="
-              sed -i 's|if err.errno == errno.EXDEV:|if err.errno == errno.EXDEV or err.errno == errno.EPERM:|' $WORKSPACE/poky/meta/classes/staging.bbclass
+              sed -i "s|if err.errno == errno.EXDEV:|if err.errno == errno.EXDEV or err.errno == errno.EPERM:|" $WORKSPACE/poky/meta/classes/staging.bbclass
               echo "staging.bbclass patched to handle EPERM errors"
               echo ""
               
@@ -308,8 +307,6 @@ jobs:
               echo "       CI Build and Test Complete"
               echo "=========================================="
             '
-
-      # ==================== 清理 ====================
       - name: Cleanup
         if: always()
         run: |
