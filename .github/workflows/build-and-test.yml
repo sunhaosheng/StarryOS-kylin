@@ -61,11 +61,13 @@ jobs:
               ln -sfn /host-workspace/poky $WORKSPACE/poky
               ln -sfn /host-workspace/meta-starry $WORKSPACE/meta-starry
               ln -sfn /host-workspace/meta-openembedded $WORKSPACE/meta-openembedded 2>/dev/null || true
+
+              # 创建 build 目录及子目录
+              mkdir -p $WORKSPACE/build/conf
+              
+              # 符号链接共享的缓存目录
               ln -sfn /host-workspace/build/sstate-cache $WORKSPACE/build/sstate-cache
               ln -sfn /host-workspace/build/downloads $WORKSPACE/build/downloads
-
-              # 创建 build 目录
-              mkdir -p $WORKSPACE/build/conf
               
               # 复制并修复 bblayers.conf 中的路径（使用传入的 HOST_PATH 变量）
               cp /host-workspace/build/conf/bblayers.conf $WORKSPACE/build/conf/bblayers.conf
