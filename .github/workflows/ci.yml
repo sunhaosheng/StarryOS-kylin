@@ -38,6 +38,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ==================== 禁用 AppArmor 限制 ====================
+      - name: Disable AppArmor restrictions
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          
       # ==================== Docker 构建和测试 ====================
       - name: Build and Test in Docker
         run: |
@@ -251,13 +256,14 @@ jobs:
               {
                 echo ""
                 echo "# ==================== 修复 EXTERNALSRC 元数据非确定性 ===================="
-                echo "# 排除时间相关变量以稳定 basehash"
-                echo "do_configure_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
-                echo "do_compile_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
-                echo "do_install_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
-                echo "do_deploy_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
-                echo "do_populate_sysroot_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
-                echo "do_deploy_source_date_epoch_pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "# 排除时间相关变量以稳定 basehash（使用新的 override 语法）"
+                echo "do_configure:pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_compile:pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_install:pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_deploy:pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_populate_sysroot:pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_deploy_source_date_epoch:pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
+                echo "do_build:pn-starry[vardepsexclude] += \"DATE TIME DATETIME\""
               } >> $WORKSPACE/build/conf/local.conf
               
               echo "Configuration files created:"
