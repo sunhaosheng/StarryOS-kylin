@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DOCKER_IMAGE: crops/poky:ubuntu-22.04
+  DOCKER_IMAGE: yocto-builder:latest  # 使用自定义镜像（已预装 clang）
   HOST_WORKSPACE: /home/yean/code/starryos-workspace
 
 jobs:
@@ -51,10 +51,6 @@ jobs:
             ${{ env.DOCKER_IMAGE }} \
             bash -c '
               set -e
-
-              echo "=== Install libclang inside container ==="
-              apt-get update -y >/dev/null
-              apt-get install -y --no-install-recommends clang-14 libclang-14-dev >/dev/null
               
               echo "=== Setting up build environment ==="
               WORKSPACE=/build/workspace
