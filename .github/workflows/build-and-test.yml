@@ -94,15 +94,13 @@ jobs:
                 cp -a /host-workspace/StarryOS/local_crates $WORKSPACE/StarryOS/local_crates
               fi
               
-              # === verify StarryOS tree ===
-              echo "=== verify StarryOS tree ==="
-              echo "[container] $WORKSPACE/StarryOS/arceos/configs:"
-              ls -la $WORKSPACE/StarryOS/arceos/configs 2>/dev/null || true
-              echo "[container] defconfig.toml:"
-              ls -la $WORKSPACE/StarryOS/arceos/configs/defconfig.toml 2>/dev/null || true
-              echo "[host-mount] defconfig.toml:"
-              ls -la /host-workspace/StarryOS/arceos/configs/defconfig.toml 2>/dev/null || true
-              echo "=========================="
+              echo "=== Install libclang for bindgen ==="
+              sudo apt-get update
+              sudo apt-get install -y clang libclang-dev llvm-dev
+              # 让 bindgen 能找到 libclang.so
+              export LIBCLANG_PATH="$(llvm-config --libdir 2>/dev/null || true)"
+              echo "LIBCLANG_PATH=$LIBCLANG_PATH"
+              ldconfig -p | grep -E 'libclang\.so' || true
 
 
               # 配置 StarryOS 源码路径（EXTERNALSRC）
