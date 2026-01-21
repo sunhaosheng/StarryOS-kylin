@@ -28,8 +28,8 @@ jobs:
 
       - name: Build and Test in Docker
         run: |
-          # 在宿主机本地磁盘创建临时工作区（无需整个 build 目录，只需要配置文件）
-          BUILD_DIR=${{ env.HOST_WORKSPACE }}/ci-builds/${{ github.run_id }}
+          # 在宿主机本地磁盘创建临时工作区（避免网络盘不支持 hardlink）
+          BUILD_DIR=/var/tmp/yocto-builds/${{ github.run_id }}
           mkdir -p $BUILD_DIR
           chmod -R 777 $BUILD_DIR
 
