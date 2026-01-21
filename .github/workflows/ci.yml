@@ -39,6 +39,22 @@ jobs:
           fetch-depth: 0
 
       # ==================== Docker 构建和测试 ====================
+      - name: Install libclang on host
+        run: |
+          # 在 host 上安装 libclang（如果尚未安装）
+          if ! dpkg -l | grep -q libclang-dev; then
+            echo "Installing libclang-dev on host..."
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq libclang-dev
+          else
+            echo "libclang-dev already installed"
+          fi
+          
+          # 查找 libclang.so 的位置
+          LIBCLANG_PATH=$(find /usr/lib -name "libclang.so*" -type f 2>/dev/null | head -1 | xargs dirname)
+          echo "LIBCLANG_PATH=${LIBCLANG_PATH}"
+          echo "LIBCLANG_PATH=${LIBCLANG_PATH}" >> $GITHUB_ENV
+      
       - name: Build and Test in Docker
         run: |
           # 创建临时构建目录
@@ -60,10 +76,12 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host/sstate-cache \
             -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host/downloads \
             -v $BUILD_DIR:/build \
+            -v ${{ env.LIBCLANG_PATH }}:/usr/lib/llvm:ro \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             -e TRIGGER_REPO=${{ env.TRIGGER_REPO }} \
             -e TRIGGER_SHA=${{ env.TRIGGER_SHA }} \
             -e TRIGGER_REF=${{ env.TRIGGER_REF }} \
+            -e LIBCLANG_PATH=/usr/lib/llvm \
             -e http_proxy="http://${{ env.PROXY_HOST }}" \
             -e https_proxy="http://${{ env.PROXY_HOST }}" \
             -e HTTP_PROXY="http://${{ env.PROXY_HOST }}" \
@@ -77,18 +95,10 @@ jobs:
               echo "=========================================="
               echo ""
               
-              # ==================== 安装依赖 ====================
-              echo "=== Installing Dependencies ==="
-              apt-get update -qq
-              apt-get install -y -qq libclang-dev
-              export LIBCLANG_PATH="/usr/lib/x86_64-linux-gnu"
-              echo "Installed libclang-dev"
-              echo "LIBCLANG_PATH=${LIBCLANG_PATH}"
-              echo ""
-              
               # ==================== 环境信息 ====================
               echo "=== Environment Info ==="
               echo "User: $(whoami)"
+              echo "LIBCLANG_PATH: ${LIBCLANG_PATH}"
               echo "Trigger Repo: ${TRIGGER_REPO:-StarryOS (direct)}"
               echo "Trigger SHA: ${TRIGGER_SHA:-N/A}"
               echo ""
