@@ -28,10 +28,6 @@ jobs:
 
       - name: Build and Test in Docker
         run: |
-          BUILD_DIR=/tmp/starry-build-${{ github.run_id }}
-          mkdir -p $BUILD_DIR
-          chmod 777 $BUILD_DIR
-
           docker run --rm \
             --user root \
             --privileged \
@@ -41,9 +37,7 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/meta-openembedded:/host-workspace/meta-openembedded:ro \
             -v ${{ env.HOST_WORKSPACE }}/StarryOS:/host-workspace/StarryOS:ro \
             -v ${{ env.HOST_WORKSPACE }}/build/conf:/host-workspace/build/conf:ro \
-            -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host-workspace/build/sstate-cache \
-            -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host-workspace/build/downloads \
-            -v $BUILD_DIR:/build \
+            -v ${{ env.HOST_WORKSPACE }}/build:/build/workspace/build \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             -e http_proxy="http://10.41.113.211:7897" \
             -e https_proxy="http://10.41.113.211:7897" \
@@ -61,12 +55,9 @@ jobs:
               ln -sfn /host-workspace/meta-starry $WORKSPACE/meta-starry
               ln -sfn /host-workspace/meta-openembedded $WORKSPACE/meta-openembedded 2>/dev/null || true
 
-              # 创建 build 目录及子目录
+              # build 目录已直接挂载到 $WORKSPACE/build，无需创建符号链接
+              # 只需确保 conf 目录存在
               mkdir -p $WORKSPACE/build/conf
-              
-              # 符号链接共享的缓存目录
-              ln -sfn /host-workspace/build/sstate-cache $WORKSPACE/build/sstate-cache
-              ln -sfn /host-workspace/build/downloads $WORKSPACE/build/downloads
               
               # 复制并修复 bblayers.conf 中的路径（使用传入的 HOST_PATH 变量）
               cp /host-workspace/build/conf/bblayers.conf $WORKSPACE/build/conf/bblayers.conf
@@ -103,11 +94,7 @@ jobs:
               echo "# CI 配置：指定 StarryOS 源码路径" >> $WORKSPACE/build/conf/local.conf
               echo "EXTERNALSRC:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
               echo "EXTERNALSRC_BUILD:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
-              # 使用强赋值确保复用共享的 sstate-cache 和 downloads
-              echo "SSTATE_DIR = \"/host-workspace/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
-              echo "DL_DIR = \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
-              # 部分文件系统不支持硬链接，禁止 staging 使用硬链接改用复制，避免 PermissionError
-              echo "STAGING_USE_HARDLINKS = \"0\"" >> $WORKSPACE/build/conf/local.conf
+              # build 目录已直接挂载，sstate-cache 和 downloads 在同一文件系统，无需额外配置路径
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
@@ -153,10 +140,3 @@ jobs:
         run: |
           # 清理可能残留的容器
           docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f || true
-          
-          # 清理临时构建目录
-          BUILD_DIR=/tmp/starry-build-${{ github.run_id }}
-          if [ -d "$BUILD_DIR" ]; then
-            echo "Cleaning up build directory: $BUILD_DIR"
-            rm -rf "$BUILD_DIR"
-          fi
