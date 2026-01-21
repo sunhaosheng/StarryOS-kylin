@@ -45,6 +45,8 @@ jobs:
             --user root \
             --privileged \
             --network host \
+            --security-opt seccomp=unconfined \
+            --security-opt apparmor=unconfined \
             -v ${{ github.workspace }}:/source:ro \
             -v ${{ env.HOST_WORKSPACE }}/poky:/host/poky:ro \
             -v ${{ env.HOST_WORKSPACE }}/meta-starry:/host/meta-starry:ro \
