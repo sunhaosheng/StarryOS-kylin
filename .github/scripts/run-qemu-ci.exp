@@ -1,0 +1,137 @@
+#!/usr/bin/expect -f
+#
+# StarryOS CI QEMU Test Script
+# 用于在 QEMU 中自动运行 CI 测试
+#
+# 使用方法：
+#   ./run-qemu-ci.exp [build_dir] [log_file]
+#
+# 参数：
+#   build_dir - Yocto 构建目录（默认: /build）
+#   log_file  - 日志输出文件（默认: /results/qemu-output.log）
+#
+
+# 配置
+set timeout 900
+set build_dir [lindex $argv 0]
+set log_file [lindex $argv 1]
+
+if {$build_dir eq ""} {
+    set build_dir "/build"
+}
+
+if {$log_file eq ""} {
+    set log_file "/results/qemu-output.log"
+}
+
+# 启用日志
+log_file -a $log_file
+
+puts "========================================"
+puts "StarryOS CI QEMU Test"
+puts "========================================"
+puts "Build directory: $build_dir"
+puts "Log file: $log_file"
+puts "Timeout: $timeout seconds"
+puts ""
+
+# 启动 QEMU
+puts "Starting QEMU..."
+spawn bash -c "source /code/poky/oe-init-build-env $build_dir && runqemu starry-ci-image nographic slirp qemuparams=\"-m 2048\""
+
+# 等待登录提示
+puts "Waiting for boot..."
+expect {
+    "starry login:" {
+        puts "\n>>> Login prompt detected"
+        send "root\r"
+        exp_continue
+    }
+    "root@starry:~#" {
+        puts "\n>>> Logged in successfully"
+    }
+    "Kernel panic" {
+        puts "\n>>> ERROR: Kernel panic!"
+        exit 2
+    }
+    timeout {
+        puts "\n>>> ERROR: Timeout waiting for login (${timeout}s)"
+        exit 1
+    }
+    eof {
+        puts "\n>>> ERROR: QEMU exited unexpectedly during boot"
+        exit 1
+    }
+}
+
+# 短暂等待系统稳定
+sleep 2
+
+# 显示系统信息
+puts "\n>>> Checking system info..."
+send "uname -a\r"
+expect "root@starry:~#"
+
+# 执行 CI 测试
+puts "\n========================================"
+puts "Running CI Tests"
+puts "========================================"
+send "run-ci-tests\r"
+
+# 等待测试完成
+expect {
+    "Test Results Summary" {
+        puts "\n>>> Test execution completed"
+        # 继续等待完整输出
+        expect {
+            "root@starry:~#" {
+                puts ">>> Back to shell"
+            }
+            timeout {
+                puts ">>> Timeout waiting for shell after tests"
+            }
+        }
+    }
+    "All tests passed" {
+        puts "\n>>> All tests passed!"
+        expect "root@starry:~#"
+    }
+    "FAILED" {
+        puts "\n>>> Some tests FAILED"
+        expect "root@starry:~#"
+    }
+    timeout {
+        puts "\n>>> ERROR: Test execution timeout (${timeout}s)"
+        # 尝试中断当前命令
+        send "\x03"
+        expect "root@starry:~#"
+        
+        # 关闭系统
+        send "poweroff\r"
+        expect eof
+        exit 1
+    }
+}
+
+# 关闭系统
+puts "\n========================================"
+puts "Shutting down"
+puts "========================================"
+send "poweroff\r"
+
+# 等待 QEMU 退出
+expect {
+    eof {
+        puts "\n>>> QEMU session ended normally"
+    }
+    timeout {
+        puts "\n>>> Warning: Timeout waiting for QEMU to exit, forcing..."
+        # 强制退出
+        close
+    }
+}
+
+puts "\n========================================"
+puts "Test Complete"
+puts "========================================"
+exit 0
