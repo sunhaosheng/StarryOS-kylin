@@ -38,11 +38,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ==================== 禁用 AppArmor 限制 ====================
-      - name: Disable AppArmor restrictions
-        run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          
       # ==================== Docker 构建和测试 ====================
       - name: Build and Test in Docker
         run: |
