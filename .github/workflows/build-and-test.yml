@@ -108,11 +108,11 @@ jobs:
               echo "DL_DIR = \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
 
               # 配置 LIBCLANG_PATH 指向挂载的宿主机 libclang 目录
-              # 同时设置 LD_LIBRARY_PATH 让动态链接器能找到 libLLVM
+              # 同时设置 LD_LIBRARY_PATH 让动态链接器能找到 libLLVM（使用 prepend 避免循环引用）
               echo "" >> $WORKSPACE/build/conf/local.conf
               echo "# CI 配置：让 bindgen 能找到 libclang 和 libLLVM" >> $WORKSPACE/build/conf/local.conf
               echo "export LIBCLANG_PATH = \"/host-lib\"" >> $WORKSPACE/build/conf/local.conf
-              echo "export LD_LIBRARY_PATH = \"/host-lib:\${LD_LIBRARY_PATH}\"" >> $WORKSPACE/build/conf/local.conf
+              echo "export LD_LIBRARY_PATH:prepend = \"/host-lib:\"" >> $WORKSPACE/build/conf/local.conf
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
