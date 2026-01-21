@@ -44,7 +44,6 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host-workspace/build/sstate-cache \
             -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host-workspace/build/downloads \
             -v $BUILD_DIR:/build \
-            -v /lib/x86_64-linux-gnu:/host-lib:ro \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             -e http_proxy="http://10.41.113.211:7897" \
             -e https_proxy="http://10.41.113.211:7897" \
@@ -52,6 +51,10 @@ jobs:
             ${{ env.DOCKER_IMAGE }} \
             bash -c '
               set -e
+
+              echo "=== Install libclang inside container ==="
+              apt-get update -y >/dev/null
+              apt-get install -y --no-install-recommends clang-14 libclang-14-dev >/dev/null
               
               echo "=== Setting up build environment ==="
               WORKSPACE=/build/workspace
@@ -106,18 +109,6 @@ jobs:
               # 使用强赋值确保复用共享的 sstate-cache 和 downloads
               echo "SSTATE_DIR = \"/host-workspace/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
               echo "DL_DIR = \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
-
-              # 配置 LIBCLANG_PATH 指向挂载的宿主机 libclang 目录
-              # 使用 BB_ENV_PASSTHROUGH_ADDITIONS 让 BitBake 透传这些环境变量到编译任务
-              echo "" >> $WORKSPACE/build/conf/local.conf
-              echo "# CI 配置：让 bindgen 能找到 libclang 和 libLLVM" >> $WORKSPACE/build/conf/local.conf
-              echo "BB_ENV_PASSTHROUGH_ADDITIONS:append = \" LIBCLANG_PATH LD_LIBRARY_PATH\"" >> $WORKSPACE/build/conf/local.conf
-              echo "LIBCLANG_PATH = \"/host-lib\"" >> $WORKSPACE/build/conf/local.conf
-              echo "LD_LIBRARY_PATH:prepend = \"/host-lib:\"" >> $WORKSPACE/build/conf/local.conf
-              
-              # 同时导出到当前 shell 环境（确保 bitbake 启动时就有这些变量）
-              export LIBCLANG_PATH="/host-lib"
-              export LD_LIBRARY_PATH="/host-lib:$LD_LIBRARY_PATH"
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
