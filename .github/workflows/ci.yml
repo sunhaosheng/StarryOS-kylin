@@ -246,12 +246,6 @@ jobs:
                 echo "PREMIRRORS:prepend = \"file://.*/.* file:///host/downloads/PATH \\n\""
               } >> $WORKSPACE/build/conf/local.conf
               
-              # ==================== 修补 staging.bbclass 处理 EPERM 错误 ====================
-              echo "=== Patching staging.bbclass for Docker tmpfs hardlink fix ==="
-              sed -i "s|if err.errno == errno.EXDEV:|if err.errno == errno.EXDEV or err.errno == errno.EPERM:|" $WORKSPACE/poky/meta/classes/staging.bbclass
-              echo "staging.bbclass patched to handle EPERM errors"
-              echo ""
-              
               echo "Configuration files created:"
               echo ""
               echo "=== bblayers.conf ==="
