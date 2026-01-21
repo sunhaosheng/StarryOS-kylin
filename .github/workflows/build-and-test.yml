@@ -32,8 +32,6 @@ jobs:
           mkdir -p $BUILD_DIR
           chmod 777 $BUILD_DIR
 
-          
-
           docker run --rm \
             --privileged \
             -v ${{ github.workspace }}:/source:ro \
@@ -45,10 +43,6 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host-workspace/build/sstate-cache \
             -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host-workspace/build/downloads \
             -v $BUILD_DIR:/build \
-            -e http_proxy=http://192.168.31.210:7897 \
-            -e https_proxy=http://192.168.31.210:7897 \
-            -e HTTP_PROXY=http://192.168.31.210:7897 \
-            -e HTTPS_PROXY=http://192.168.31.210:7897 \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             --network host \
             ${{ env.DOCKER_IMAGE }} \
