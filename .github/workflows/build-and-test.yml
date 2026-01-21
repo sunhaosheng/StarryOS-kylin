@@ -42,8 +42,8 @@ jobs:
             -v ${{ env.HOST_WORKSPACE }}/meta-openembedded:/host-workspace/meta-openembedded:ro \
             -v ${{ env.HOST_WORKSPACE }}/StarryOS:/host-workspace/StarryOS:ro \
             -v ${{ env.HOST_WORKSPACE }}/build/conf:/host-workspace/build/conf:ro \
-            -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host-workspace/build/sstate-cache \
-            -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host-workspace/build/downloads \
+            -v ${{ env.HOST_WORKSPACE }}/build/sstate-cache:/host-workspace/build/sstate-cache:ro \
+            -v ${{ env.HOST_WORKSPACE }}/build/downloads:/host-workspace/build/downloads:ro \
             -v $BUILD_DIR:/build \
             -e HOST_PATH=${{ env.HOST_WORKSPACE }} \
             -e http_proxy="http://10.41.113.211:7897" \
@@ -56,6 +56,15 @@ jobs:
               echo "=== Setting up build environment ==="
               WORKSPACE=/build/workspace
               mkdir -p $WORKSPACE
+              
+              # 复制宿主机缓存到容器内，避免宿主机权限问题
+              mkdir -p /build/sstate-cache /build/downloads
+              if [ -d /host-workspace/build/sstate-cache ]; then
+                rsync -a /host-workspace/build/sstate-cache/ /build/sstate-cache/
+              fi
+              if [ -d /host-workspace/build/downloads ]; then
+                rsync -a /host-workspace/build/downloads/ /build/downloads/
+              fi
                          
               # 符号链接其他 Yocto 组件（只读）
               ln -sfn /host-workspace/poky $WORKSPACE/poky
@@ -66,8 +75,8 @@ jobs:
               mkdir -p $WORKSPACE/build/conf
               
               # 软链接共享缓存
-              ln -sfn /host-workspace/build/sstate-cache $WORKSPACE/build/sstate-cache
-              ln -sfn /host-workspace/build/downloads $WORKSPACE/build/downloads
+              ln -sfn /build/sstate-cache $WORKSPACE/build/sstate-cache
+              ln -sfn /build/downloads $WORKSPACE/build/downloads
 
               # 复制配置文件
               cp /host-workspace/build/conf/bblayers.conf $WORKSPACE/build/conf/bblayers.conf
@@ -104,9 +113,9 @@ jobs:
               echo "# CI 配置：指定 StarryOS 源码路径" >> $WORKSPACE/build/conf/local.conf
               echo "EXTERNALSRC:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
               echo "EXTERNALSRC_BUILD:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
-              # 显式指定共享缓存路径
-              echo "SSTATE_DIR = \"/host-workspace/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
-              echo "DL_DIR = \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
+              # 显式指定可写缓存路径
+              echo "SSTATE_DIR = \"/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
+              echo "DL_DIR = \"/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
