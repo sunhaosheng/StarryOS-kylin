@@ -95,8 +95,7 @@ jobs:
               fi
               
               echo "=== Install libclang for bindgen ==="
-              sudo apt-get update
-              sudo apt-get install -y clang libclang-dev llvm-dev
+              apt-get install -y clang libclang-dev llvm-dev
               # 让 bindgen 能找到 libclang.so
               export LIBCLANG_PATH="$(llvm-config --libdir 2>/dev/null || true)"
               echo "LIBCLANG_PATH=$LIBCLANG_PATH"
