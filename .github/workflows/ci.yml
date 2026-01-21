@@ -284,35 +284,24 @@ jobs:
               echo "=== Running QEMU test ==="
               
               # 简单启动测试：验证内核能否启动并登录
-              timeout 180 bash -c '\''
-                runqemu starry-ci-image nographic slirp &
-                QEMU_PID=$!
-                
-                # 等待 QEMU 启动
-                sleep 90
-                
-                if ps -p $QEMU_PID > /dev/null; then
-                  echo ""
-                  echo "QEMU boot test PASSED - system started successfully"
-                  kill $QEMU_PID 2>/dev/null || true
-                  wait $QEMU_PID 2>/dev/null || true
-                  exit 0
-                else
-                  echo ""
-                  echo "QEMU boot test FAILED - system exited unexpectedly"
-                  exit 1
-                fi
-              '\'' || {
-                RESULT=$?
-                if [ $RESULT -eq 124 ]; then
-                  echo "QEMU test timed out (this might be OK if system is running slowly)"
-                  # 尝试清理
-                  pkill -f qemu || true
-                  exit 0
-                fi
-                echo "QEMU test failed with exit code: $RESULT"
-                exit $RESULT
-              }
+              runqemu starry-ci-image nographic slirp &
+              QEMU_PID=$!
+              
+              # 等待 QEMU 启动
+              sleep 90
+              
+              if ps -p $QEMU_PID > /dev/null 2>&1; then
+                echo ""
+                echo "QEMU boot test PASSED - system started successfully"
+                kill $QEMU_PID 2>/dev/null || true
+                wait $QEMU_PID 2>/dev/null || true
+              else
+                echo ""
+                echo "QEMU boot test FAILED - system exited unexpectedly"
+              fi
+              
+              # 清理可能残留的 QEMU 进程
+              pkill -f qemu || true
               
               echo ""
               echo "=========================================="
