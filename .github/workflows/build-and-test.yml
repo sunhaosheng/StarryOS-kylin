@@ -61,8 +61,8 @@ jobs:
               ln -sfn /host-workspace/poky $WORKSPACE/poky
               ln -sfn /host-workspace/meta-starry $WORKSPACE/meta-starry
               ln -sfn /host-workspace/meta-openembedded $WORKSPACE/meta-openembedded 2>/dev/null || true
-              ln -sfn /host-workspace/build/sstate-cache $WORKSPACE/sstate-cache
-              ln -sfn /host-workspace/build/downloads $WORKSPACE/downloads
+              ln -sfn /host-workspace/build/sstate-cache $WORKSPACE/build/sstate-cache
+              ln -sfn /host-workspace/build/downloads $WORKSPACE/build/downloads
 
               # 创建 build 目录
               mkdir -p $WORKSPACE/build/conf
@@ -101,13 +101,16 @@ jobs:
               echo "# CI 配置：指定 StarryOS 源码路径" >> $WORKSPACE/build/conf/local.conf
               echo "EXTERNALSRC:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
               echo "EXTERNALSRC_BUILD:pn-starry = \"$WORKSPACE/StarryOS\"" >> $WORKSPACE/build/conf/local.conf
-              echo "SSTATE_DIR ?= \"/host-workspace/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
-              echo "DL_DIR ?= \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
+              # 使用强赋值确保复用共享的 sstate-cache 和 downloads
+              echo "SSTATE_DIR = \"/host-workspace/build/sstate-cache\"" >> $WORKSPACE/build/conf/local.conf
+              echo "DL_DIR = \"/host-workspace/build/downloads\""  >> $WORKSPACE/build/conf/local.conf
 
               # 配置 LIBCLANG_PATH 指向挂载的宿主机 libclang 目录
+              # 同时设置 LD_LIBRARY_PATH 让动态链接器能找到 libLLVM
               echo "" >> $WORKSPACE/build/conf/local.conf
-              echo "# CI 配置：让 bindgen 能找到 libclang" >> $WORKSPACE/build/conf/local.conf
+              echo "# CI 配置：让 bindgen 能找到 libclang 和 libLLVM" >> $WORKSPACE/build/conf/local.conf
               echo "export LIBCLANG_PATH = \"/host-lib\"" >> $WORKSPACE/build/conf/local.conf
+              echo "export LD_LIBRARY_PATH = \"/host-lib:\${LD_LIBRARY_PATH}\"" >> $WORKSPACE/build/conf/local.conf
 
               echo "=== local.conf (tail) ==="
               tail -10 $WORKSPACE/build/conf/local.conf
@@ -153,3 +156,10 @@ jobs:
         run: |
           # 清理可能残留的容器
           docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f || true
+          
+          # 清理临时构建目录
+          BUILD_DIR=/tmp/starry-build-${{ github.run_id }}
+          if [ -d "$BUILD_DIR" ]; then
+            echo "Cleaning up build directory: $BUILD_DIR"
+            rm -rf "$BUILD_DIR"
+          fi
