@@ -155,7 +155,10 @@ jobs:
               # 初始化 Yocto 环境（会自动创建 build/conf/）
               echo ""
               echo "===== Initializing Yocto environment ====="
+              # 临时禁用 set -u，因为 oe-init-build-env 可能访问未设置的变量
+              set +u
               source poky/oe-init-build-env build
+              set -u
               
               # 此时 build/conf/ 已创建，包含默认的 local.conf 和 bblayers.conf
               echo ""
