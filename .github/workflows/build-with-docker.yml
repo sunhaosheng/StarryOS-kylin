@@ -67,7 +67,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          path: ${{ env.RUN_DIR }}/StarryOS
+      
+      - name: Copy PR code to workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "===== Copying PR code to ${{ env.RUN_DIR }}/StarryOS ====="
+          cp -a "$GITHUB_WORKSPACE" "${{ env.RUN_DIR }}/StarryOS"
+          
+          echo "✓ PR code copied"
+          ls -la "${{ env.RUN_DIR }}/StarryOS/" | head -10
       
       - name: Sync other repos with repo
         shell: bash
@@ -157,12 +167,14 @@ jobs:
               echo "===== Updating local.conf paths ====="
               cd /workspace
               
-              sed -i 's|^DL_DIR.*=.*|DL_DIR = "/workspace/downloads"|g' build/conf/local.conf
-              sed -i 's|^SSTATE_DIR.*=.*|SSTATE_DIR = "/workspace/sstate"|g' build/conf/local.conf
+              # 使用 sed 修改文件
+              sed -i "s|^DL_DIR.*=.*|DL_DIR = \"/workspace/downloads\"|g" build/conf/local.conf
+              sed -i "s|^SSTATE_DIR.*=.*|SSTATE_DIR = \"/workspace/sstate\"|g" build/conf/local.conf
               
               echo "Modified paths:"
               grep -E "^DL_DIR|^SSTATE_DIR" build/conf/local.conf
               echo ""
+              
               
               # 验证配置
               echo ""
