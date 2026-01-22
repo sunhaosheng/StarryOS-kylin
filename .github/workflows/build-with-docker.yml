@@ -3,12 +3,11 @@ name: Build and Test (Docker)
 on:
   push:
     branches:
-      - main
-      - dev
+      - docker-ci-workflow
   pull_request:
     branches:
-      - main
-      - dev
+      - docker-ci-workflow
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
