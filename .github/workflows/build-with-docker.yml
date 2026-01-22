@@ -59,9 +59,6 @@ jobs:
             echo "✓ .repo directory copied"
           fi
           
-          # 复制脚本和 Docker 配置
-          cp -a "${{ env.WORKSPACE_TEMPLATE }}/scripts" "$RUN_DIR/"
-          cp -a "${{ env.WORKSPACE_TEMPLATE }}/docker" "$RUN_DIR/"
           echo ""
           echo "Workspace structure:"
           ls -la "$RUN_DIR/"
