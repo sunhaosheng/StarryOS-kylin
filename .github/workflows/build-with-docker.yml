@@ -1,0 +1,212 @@
+name: Build and Test (Docker)
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  # Docker 镜像
+  DOCKER_IMAGE: starryos-builder:kirkstone-v1.0
+  
+  # 本地 workspace 模板路径（self-hosted runner 上）
+  WORKSPACE_TEMPLATE: /home/yean/code/starryos-workspace
+  
+  # 缓存目录（在 runner 上）
+  CACHE_DIR: /home/yean/yocto-cache
+
+jobs:
+  build-and-test:
+    runs-on: [self-hosted, linux]
+    
+    steps:
+      - name: Prepare workspace from template
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # 为本次运行创建独立的工作目录
+          RUN_DIR="/tmp/starry-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "RUN_DIR=$RUN_DIR" >> "$GITHUB_ENV"
+          
+          echo "===== Preparing workspace in $RUN_DIR ====="
+          
+          # 清理旧的运行目录
+          rm -rf "$RUN_DIR"
+          mkdir -p "$RUN_DIR"
+          
+          # 从模板复制基础环境（poky, meta-*, .repo）
+          echo "Copying base environment from template..."
+          cp -a "${{ env.WORKSPACE_TEMPLATE }}/poky" "$RUN_DIR/"
+          cp -a "${{ env.WORKSPACE_TEMPLATE }}/meta-starry" "$RUN_DIR/"
+          
+          # 复制 meta-openembedded（如果存在）
+          if [ -d "${{ env.WORKSPACE_TEMPLATE }}/meta-openembedded" ]; then
+            cp -a "${{ env.WORKSPACE_TEMPLATE }}/meta-openembedded" "$RUN_DIR/"
+          fi
+          
+          # 复制 .repo 配置
+          if [ -d "${{ env.WORKSPACE_TEMPLATE }}/.repo" ]; then
+            cp -a "${{ env.WORKSPACE_TEMPLATE }}/.repo" "$RUN_DIR/"
+            echo "✓ .repo directory copied"
+          fi
+          
+          # 复制脚本和 Docker 配置
+          cp -a "${{ env.WORKSPACE_TEMPLATE }}/scripts" "$RUN_DIR/"
+          cp -a "${{ env.WORKSPACE_TEMPLATE }}/docker" "$RUN_DIR/"
+          echo ""
+          echo "Workspace structure:"
+          ls -la "$RUN_DIR/"
+      
+      - name: Checkout PR code (StarryOS)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: ${{ env.RUN_DIR }}/StarryOS
+      
+      - name: Sync other repos with repo
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          cd "${{ env.RUN_DIR }}"
+          
+          # 检查是否有 repo 工具
+          if command -v repo &> /dev/null; then
+            echo "===== Syncing repos with repo tool ====="
+            
+            # repo sync 排除已经复制的目录：
+            # - poky, meta-starry, meta-openembedded (从模板复制)
+            # - StarryOS 主仓库（从 PR checkout）
+            # 只同步 StarryOS 下的嵌套子仓库（arceos, local_crates等）
+            repo sync -c --no-tags --no-clone-bundle \
+              -j$(nproc) \
+              -x poky \
+              -x meta-starry \
+              -x meta-openembedded \
+              -x StarryOS || true
+            
+            echo "✓ Repos synced (excluded: poky, meta-starry, meta-openembedded, StarryOS)"
+            echo ""
+            echo "StarryOS subdirectories:"
+            ls -la StarryOS/ | head -20
+          else
+            echo "Warning: repo tool not found, skipping repo sync"
+            echo "Assuming all dependencies are in the PR or template"
+          fi
+      
+      - name: Verify workspace structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "===== Final workspace structure ====="
+          ls -la "${{ env.RUN_DIR }}/"
+          echo ""
+          echo "StarryOS contents:"
+          ls -la "${{ env.RUN_DIR }}/StarryOS/" | head -20
+          echo ""
+                
+      - name: Build in Docker
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "===== Starting Docker build ====="
+          echo "RUN_DIR: ${{ env.RUN_DIR }}"
+          echo "CACHE_DIR: ${{ env.CACHE_DIR }}"
+          
+          # 确保缓存目录存在
+          mkdir -p "${{ env.CACHE_DIR }}/downloads"
+          mkdir -p "${{ env.CACHE_DIR }}/sstate"
+          
+          # 运行 Docker 容器进行构建
+          docker run --rm \
+            -v "${{ env.RUN_DIR }}:/workspace" \
+            -v "${{ env.CACHE_DIR }}/downloads:/workspace/downloads" \
+            -v "${{ env.CACHE_DIR }}/sstate:/workspace/sstate" \
+            -e "BB_ENV_PASSTHROUGH_ADDITIONS=CI GITHUB_ACTIONS" \
+            -e "CI=true" \
+            -e "GITHUB_ACTIONS=true" \
+            ${{ env.DOCKER_IMAGE }} \
+            bash -c '
+              set -euo pipefail
+              cd /workspace
+              
+              echo "===== Workspace contents ====="
+              ls -la /workspace/
+              echo "=============================="
+              
+              # 初始化 Yocto 环境（会自动创建 build/conf/）
+              echo ""
+              echo "===== Initializing Yocto environment ====="
+              source poky/oe-init-build-env build
+              
+              # 此时 build/conf/ 已创建，包含默认的 local.conf 和 bblayers.conf
+              echo ""
+              echo "Build directory created:"
+              ls -la /workspace/build/conf/
+              echo ""
+              
+              # 修改 local.conf 中的路径配置
+              echo "===== Updating local.conf paths ====="
+              cd /workspace
+              
+              sed -i 's|^DL_DIR.*=.*|DL_DIR = "/workspace/downloads"|g' build/conf/local.conf
+              sed -i 's|^SSTATE_DIR.*=.*|SSTATE_DIR = "/workspace/sstate"|g' build/conf/local.conf
+              
+              echo "Modified paths:"
+              grep -E "^DL_DIR|^SSTATE_DIR" build/conf/local.conf
+              echo ""
+              
+              # 验证配置
+              echo ""
+              echo "===== Configuration summary ====="
+              echo "MACHINE: $MACHINE"
+              echo "DL_DIR: $(bitbake -e | grep ^DL_DIR= | cut -d\"=\" -f2 | tr -d \"\\\"\")"
+              echo "SSTATE_DIR: $(bitbake -e | grep ^SSTATE_DIR= | cut -d\"=\" -f2 | tr -d \"\\\"\")"
+              echo "=================================="
+              echo ""
+              
+              # 开始构建
+              echo "===== Starting bitbake starry ====="
+              bitbake starry
+              
+              echo ""
+              echo "===== Build completed successfully ====="
+              
+              # 显示构建产物
+              echo ""
+              echo "===== Build artifacts ====="
+              ls -lh /workspace/build/tmp-musl/deploy/images/aarch64-qemu-virt/ 2>/dev/null || echo "No artifacts found"
+              echo "=========================="
+            '
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          echo "===== Cleanup ====="
+          
+          # 清理容器
+          docker ps -aq --filter "ancestor=${{ env.DOCKER_IMAGE }}" | xargs -r docker rm -f || true
+          
+          # 清理临时工作目录
+          if [ -n "${{ env.RUN_DIR }}" ] && [ -d "${{ env.RUN_DIR }}" ]; then
+            echo "Removing temporary workspace: ${{ env.RUN_DIR }}"
+            rm -rf "${{ env.RUN_DIR }}" || true
+            echo "✓ Workspace cleaned"
+          fi
+          
+          echo "✓ Cleanup completed"
